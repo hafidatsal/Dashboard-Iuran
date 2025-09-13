@@ -1,0 +1,1123 @@
+<!--
+dashboard-tabungan.html
+Single-file SPA Dashboard Tabungan (HTML + internal CSS + internal JS)
+
+Cara pakai:
+1. Simpan sebagai dashboard-tabungan.html
+2. Buka file di browser modern (Chrome / Edge / Firefox up-to-date)
+3. Semua data disimpan di localStorage (key: savings_dashboard_v1)
+4. Backup/Restore di Pengaturan (Export JSON / Import JSON)
+5. Dependensi via CDN (sudah disertakan di bawah):
+   - Chart.js
+   - SheetJS (xlsx)
+   - jsPDF (jspdf.umd.min.js)
+   - html2canvas
+Catatan:
+ - File ini sengaja single-file untuk kemudahan distribusi.
+ - Jika ukuran canvas saat export PDF besar -> script akan membagi menjadi beberapa halaman sederhana.
+ - Kompatibilitas: modern browsers (ES6+).
+-->
+
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Dashboard Tabungan</title>
+
+  <!-- CDN libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+  <!-- Minimal reset + modern, professional styles -->
+  <style>
+    :root{
+      --accent:#0d6efd;
+      --accent-2:#4f46e5;
+      --muted:#6b7280;
+      --bg:#f6f7fb;
+      --card:#ffffff;
+      --success:#16a34a;
+      --danger:#ef4444;
+      --radius:12px;
+      --shadow: 0 10px 30px rgba(12,21,50,0.06);
+      --glass: rgba(13,110,253,0.06);
+      --font: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+    }
+    [data-theme='dark']{
+      --bg:#071022;
+      --card:#0b1220;
+      --muted:#94a3b8;
+    }
+
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;font-family:var(--font);background:var(--bg);color:var(--muted);-webkit-font-smoothing:antialiased}
+    a{color:inherit;text-decoration:none}
+    button{cursor:pointer;font-family:inherit}
+
+    /* Layout */
+    .app{display:flex;min-height:100vh}
+    /* Sidebar */
+    .sidebar{
+      width:260px;background:var(--card);padding:18px;border-right:1px solid rgba(0,0,0,0.04);box-shadow:var(--shadow);
+      position:sticky;top:0;height:100vh;flex-shrink:0;
+    }
+    .brand{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+    .logo{width:46px;height:46px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent-2));box-shadow:0 8px 30px rgba(13,110,253,0.08)}
+    .brand h1{font-size:16px;margin:0;color:var(--accent-2)}
+    nav{display:flex;flex-direction:column;gap:6px}
+    .nav-btn{
+      display:flex;align-items:center;gap:10px;padding:10px;border-radius:10px;color:var(--muted);background:transparent;border:none;text-align:left;
+    }
+    .nav-btn[aria-current='true'], .nav-btn:hover{background:var(--glass);color:var(--accent-2);outline:none}
+    .nav-btn:focus{box-shadow:0 0 0 4px rgba(13,110,253,0.08)}
+    .sidebar-foot{font-size:13px;margin-top:14px;color:var(--muted)}
+
+    /* Main */
+    .main{flex:1;padding:20px}
+    .topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:18px}
+    .top-left{display:flex;gap:12px;align-items:center}
+    .hamburger{display:none;padding:8px;border-radius:8px;border:1px solid rgba(0,0,0,0.04);background:transparent}
+    .title{font-weight:700;font-size:18px}
+    .top-right{display:flex;gap:8px;align-items:center}
+    .btn{background:var(--accent);color:white;padding:8px 12px;border-radius:8px;border:none}
+    .btn.secondary{background:transparent;color:var(--accent);border:1px solid rgba(13,110,253,0.12)}
+    .btn.ghost{background:transparent;border:1px dashed rgba(0,0,0,0.06);color:var(--muted)}
+
+    /* Dashboard cards */
+    .grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+    .card{background:var(--card);padding:14px;border-radius:12px;box-shadow:var(--shadow)}
+    .card h4{margin:0;font-size:13px;color:var(--muted)}
+    .card p{margin:8px 0 0;font-size:20px;color:var(--accent-2);font-weight:700}
+
+    /* Layout sections */
+    .content{display:grid;grid-template-columns:1fr 360px;gap:14px}
+    .panel{background:var(--card);padding:14px;border-radius:12px;box-shadow:var(--shadow)}
+    .panel h3{margin:0 0 10px 0;font-size:16px;color:var(--muted)}
+
+    /* Forms */
+    label{display:block;font-size:13px;margin-bottom:6px;color:var(--muted)}
+    input[type='text'], input[type='number'], input[type='date'], select, textarea{width:100%;padding:10px;border-radius:8px;border:1px solid rgba(0,0,0,0.06);background:transparent}
+    input:focus, select:focus, textarea:focus{outline:none;box-shadow:0 0 0 4px rgba(13,110,253,0.06)}
+    .form-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+
+    /* Table */
+    .table-wrap{overflow:auto;max-height:420px}
+    table{width:100%;border-collapse:collapse;font-size:13px}
+    th,td{padding:10px;text-align:left;border-bottom:1px solid rgba(0,0,0,0.04)}
+    tr:hover td{background:var(--glass)}
+    .action-btn{padding:6px 8px;border-radius:8px;border:none}
+
+    /* Modal */
+    .modal-backdrop{position:fixed;inset:0;background:rgba(3,7,18,0.45);display:none;align-items:center;justify-content:center;padding:18px;z-index:50}
+    .modal{background:var(--card);width:100%;max-width:720px;border-radius:12px;padding:16px;box-shadow:var(--shadow)}
+    .modal .row{display:flex;gap:8px}
+    .modal h3{margin:0 0 8px}
+
+    /* small screens */
+    @media (max-width:1000px){
+      .grid-4{grid-template-columns:repeat(2,1fr)}
+      .content{grid-template-columns:1fr}
+      .sidebar{position:fixed;left:-320px;top:0;bottom:0;z-index:40;transition:all .25s;width:280px}
+      .sidebar.open{left:0}
+      .hamburger{display:inline-block}
+    }
+    @media (max-width:600px){
+      .grid-4{grid-template-columns:repeat(1,1fr)}
+      .panel{padding:12px}
+      .card p{font-size:18px}
+      .sidebar{width:260px}
+    }
+
+    /* Accessibility helper */
+    .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
+  </style>
+</head>
+<body>
+  <div class="app" id="app" data-theme="light">
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar" aria-label="Sidebar">
+      <div class="brand">
+        <div class="logo" aria-hidden="true"></div>
+        <div>
+          <h1>Dashboard Tabungan</h1>
+          <div style="font-size:12px;color:var(--muted)">Local-first · Single-file</div>
+        </div>
+      </div>
+
+      <nav role="navigation" aria-label="Main menu">
+        <button class="nav-btn" data-view="dashboard" aria-current="true">📊 Dashboard</button>
+        <button class="nav-btn" data-view="input">➕ Input Transaksi</button>
+        <button class="nav-btn" data-view="history">📜 Riwayat Transaksi</button>
+        <button class="nav-btn" data-view="reports">📈 Laporan & Export</button>
+        <button class="nav-btn" data-view="settings">⚙️ Pengaturan</button>
+      </nav>
+
+      <div style="margin-top:12px">
+        <button class="btn secondary" id="toggle-sidebar" aria-label="Toggle sidebar">Toggle</button>
+      </div>
+      <div class="sidebar-foot">Versi: 1.0 · storage key: <code style="font-size:12px">savings_dashboard_v1</code></div>
+    </aside>
+
+    <!-- Main -->
+    <main class="main" id="main">
+      <div class="topbar">
+        <div class="top-left">
+          <button class="hamburger" id="hamburger" aria-expanded="false">☰</button>
+          <div class="title" id="view-title">Dashboard</div>
+        </div>
+        <div class="top-right">
+          <div id="clock" aria-live="polite" style="font-size:13px;color:var(--muted)"></div>
+          <button class="btn" id="btn-quick-add">Tambah Cepat</button>
+        </div>
+      </div>
+
+      <!-- Views container -->
+      <section id="views">
+
+        <!-- Dashboard -->
+        <div class="view" id="view-dashboard" data-view="dashboard">
+          <div class="grid-4" role="region" aria-label="Ringkasan">
+            <div class="card"><h4>Total Tabungan</h4><p id="total-balance">Rp 0</p></div>
+            <div class="card"><h4>Total Masukan</h4><p id="total-in">Rp 0</p></div>
+            <div class="card"><h4>Total Pengeluaran</h4><p id="total-out">Rp 0</p></div>
+            <div class="card"><h4>Jumlah Transaksi</h4><p id="total-count">0</p></div>
+          </div>
+
+          <div class="content">
+            <div>
+              <div class="panel">
+                <h3>Grafik Bulanan</h3>
+                <canvas id="chart-monthly" height="160" aria-label="Grafik masukan vs pengeluaran"></canvas>
+              </div>
+
+              <div class="panel" style="margin-top:12px">
+                <h3>Transaksi Terbaru</h3>
+                <div class="table-wrap"><table aria-label="Transaksi terbaru"><thead><tr><th>Tgl</th><th>Nama</th><th>Kategori</th><th>Jumlah</th><th>Jenis</th><th></th></tr></thead><tbody id="recent-list"></tbody></table></div>
+              </div>
+            </div>
+
+            <aside>
+              <div class="panel">
+                <h3>Quick Input</h3>
+                <form id="quick-form" aria-label="Form quick input">
+                  <div style="display:flex;gap:8px;margin-bottom:8px">
+                    <select id="quick-member" aria-label="Anggota quick"></select>
+                    <select id="quick-type" aria-label="Jenis quick"><option value="in">Masukan</option><option value="out">Pengeluaran</option></select>
+                  </div>
+                  <input type="number" id="quick-amount" placeholder="Jumlah" min="1" aria-label="Jumlah quick" required/>
+                  <input type="text" id="quick-category" placeholder="Kategori (opsional)" style="margin-top:8px"/>
+                  <div style="margin-top:8px;display:flex;gap:8px"><button class="btn" type="submit">Tambah</button><button class="btn secondary" id="btn-export-json" type="button">Export JSON</button></div>
+                </form>
+              </div>
+
+              <div class="panel" style="margin-top:12px">
+                <h3>Export Cepat</h3>
+                <div style="display:flex;flex-direction:column;gap:8px">
+                  <button class="btn" id="export-xlsx">Export Excel</button>
+                  <button class="btn" id="export-report-pdf">Export Laporan (PDF)</button>
+                  <button class="btn secondary" id="btn-print-report">Cetak</button>
+                </div>
+              </div>
+            </aside>
+          </div>
+        </div>
+
+        <!-- Input Transaksi -->
+        <div class="view" id="view-input" data-view="input" style="display:none">
+          <div class="panel">
+            <h3>Input Transaksi</h3>
+            <form id="tx-form" aria-label="Form input transaksi">
+              <div class="form-row">
+                <div>
+                  <label for="member">Anggota</label>
+                  <select id="member" aria-required="true"></select>
+                </div>
+                <div>
+                  <label for="type">Jenis</label>
+                  <select id="type" aria-required="true"><option value="in">Masukan</option><option value="out">Pengeluaran</option></select>
+                </div>
+              </div>
+
+              <div class="form-row" style="margin-top:8px">
+                <div>
+                  <label for="amount">Jumlah</label>
+                  <input type="number" id="amount" min="1" aria-required="true" />
+                </div>
+                <div>
+                  <label for="date">Tanggal</label>
+                  <input type="date" id="date" aria-required="true" />
+                </div>
+              </div>
+
+              <div style="margin-top:8px">
+                <label for="category">Kategori</label>
+                <select id="category"></select>
+              </div>
+
+              <div style="margin-top:8px">
+                <label for="note">Keterangan</label>
+                <input type="text" id="note" />
+              </div>
+
+              <div style="margin-top:10px;display:flex;gap:8px">
+                <button class="btn" id="btn-save-tx" type="submit">Simpan</button>
+                <button class="btn secondary" id="btn-reset-form" type="button">Reset</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- Riwayat Transaksi -->
+        <div class="view" id="view-history" data-view="history" style="display:none">
+          <div class="panel">
+            <h3>Riwayat Transaksi</h3>
+
+            <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+              <input id="search" placeholder="Cari nama / kategori / keterangan" />
+              <select id="filter-type"><option value="all">Semua</option><option value="in">Masukan</option><option value="out">Pengeluaran</option></select>
+              <select id="filter-member"><option value="all">Semua Anggota</option></select>
+              <button class="btn secondary" id="btn-refresh">Refresh</button>
+            </div>
+
+            <div class="table-wrap">
+              <table aria-label="Tabel riwayat transaksi">
+                <thead><tr><th>Tgl</th><th>Nama</th><th>Kategori</th><th>Keterangan</th><th>Jumlah</th><th>Jenis</th><th>Aksi</th></tr></thead>
+                <tbody id="history-table"></tbody>
+              </table>
+            </div>
+
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+              <div>
+                <button class="btn secondary" id="prev-page">Prev</button>
+                <button class="btn secondary" id="next-page">Next</button>
+              </div>
+              <div>Halaman <span id="page-num">1</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Laporan & Export -->
+        <div class="view" id="view-reports" data-view="reports" style="display:none">
+          <div class="panel">
+            <h3>Laporan & Export</h3>
+
+            <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+              <label>From <input type="date" id="report-from" /></label>
+              <label>To <input type="date" id="report-to" /></label>
+              <label>Kategori <select id="report-category"><option value="">(Semua)</option></select></label>
+              <label>Anggota <select id="report-member"><option value="">(Semua)</option></select></label>
+              <button class="btn" id="btn-generate-report">Generate</button>
+              <button class="btn secondary" id="btn-print-report-2">Print</button>
+            </div>
+
+            <div id="report-area">
+              <div id="report-summary" style="margin-bottom:10px"></div>
+              <div style="overflow:auto"><table id="report-table"><thead><tr><th>Tgl</th><th>Nama</th><th>Kategori</th><th>Keterangan</th><th>Jumlah</th><th>Jenis</th></tr></thead><tbody></tbody></table></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pengaturan -->
+        <div class="view" id="view-settings" data-view="settings" style="display:none">
+          <div class="panel">
+            <h3>Pengaturan</h3>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <div>
+                <label for="currency">Mata Uang</label>
+                <select id="currency"><option value="IDR">IDR (Rp)</option><option value="USD">USD ($)</option></select>
+              </div>
+              <div>
+                <label for="numformat">Format Angka</label>
+                <select id="numformat"><option value="dot">1.000.000</option><option value="comma">1,000,000</option></select>
+              </div>
+              <div>
+                <label for="theme">Tema</label>
+                <select id="theme"><option value="light">Light</option><option value="dark">Dark</option></select>
+              </div>
+              <div>
+                <label for="default-date">Tanggal Default</label>
+                <select id="default-date"><option value="today">Hari ini</option><option value="custom">Custom</option></select>
+              </div>
+              <div>
+                <label for="notify">Notifikasi</label>
+                <select id="notify"><option value="on">On</option><option value="off">Off</option></select>
+              </div>
+              <div>
+                <label for="autosave">Autosave sebelum exit</label>
+                <select id="autosave"><option value="on">On</option><option value="off">Off</option></select>
+              </div>
+            </div>
+
+            <div style="margin-top:12px;display:flex;gap:8px">
+              <button class="btn" id="btn-save-settings">Simpan Pengaturan</button>
+              <button class="btn secondary" id="btn-export-backup">Download Backup JSON</button>
+              <input type="file" id="restore-json" accept="application/json" />
+              <button class="btn danger" id="btn-reset-data">Reset Data</button>
+            </div>
+
+            <hr style="margin:12px 0" />
+            <div style="font-size:13px;color:var(--muted)">
+              Skema penyimpanan: <code>savings_dashboard_v1</code>. Gunakan backup sebelum reset.
+            </div>
+          </div>
+        </div>
+
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Modal detail / edit -->
+  <div class="modal-backdrop" id="modal-backdrop" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="modal" role="document" id="modal">
+      <div id="modal-content"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+        <button class="btn secondary" id="modal-close">Tutup</button>
+        <button class="btn" id="modal-action">Aksi</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- End of HTML. Internal JS below -->
+  <script>
+  /*************************************************************************
+   * Dashboard Tabungan - Single-file JS
+   * - localStorage key: savings_dashboard_v1
+   * - schema: { schemaVersion:1, settings:{...}, members:[], categories:[], transactions:[] }
+   *************************************************************************/
+
+  /* -------------------- Constants & Initial State -------------------- */
+  const STORAGE_KEY = 'savings_dashboard_v1';
+  const DEFAULT_STATE = {
+    schemaVersion: 1,
+    settings: {
+      currency: 'IDR',
+      numformat: 'dot',
+      theme: 'light',
+      defaultDate: 'today',
+      notify: 'on',
+      autosave: 'on'
+    },
+    members: [ 'Umum' ],
+    categories: [ 'Gaji', 'Donasi', 'Belanja', 'Tagihan' ],
+    transactions: [] // each: {id, member, type:'in'|'out', amount, date(YYYY-MM-DD), category, note, createdAt}
+  };
+
+  let state = loadState();
+
+  /* -------------------- Utilities -------------------- */
+  function saveState(){
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }
+  function loadState(){
+    try{
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if(!raw){ localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_STATE)); return deepCopy(DEFAULT_STATE); }
+      const parsed = JSON.parse(raw);
+      // simple migration check
+      if(!parsed.schemaVersion){ parsed.schemaVersion = 1; }
+      return parsed;
+    }catch(e){
+      console.error('Failed to load state', e);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_STATE));
+      return deepCopy(DEFAULT_STATE);
+    }
+  }
+  function deepCopy(o){ return JSON.parse(JSON.stringify(o)); }
+  function uid(){ return 'tx_' + Date.now() + '_' + Math.floor(Math.random()*9000 + 1000); }
+  function todayISO(){ return (new Date()).toISOString().slice(0,10); }
+
+  function formatNumberDisplay(n){
+    const fmt = state.settings.numformat === 'comma' ? 'en-US' : 'id-ID';
+    // For IDR vs USD we will use Intl for currency formatting in formatCurrency
+    return Number(n).toLocaleString(fmt);
+  }
+  function formatCurrency(n){
+    if(isNaN(n)) n = 0;
+    if(state.settings.currency === 'IDR'){
+      // show Rp and use user-chosen separators
+      const v = Math.abs(Number(n));
+      if(state.settings.numformat === 'dot') return 'Rp ' + v.toLocaleString('id-ID');
+      return 'Rp ' + v.toLocaleString('en-US');
+    } else {
+      const v = Math.abs(Number(n));
+      if(state.settings.numformat === 'dot') return '$ ' + v.toLocaleString('id-ID');
+      return '$ ' + v.toLocaleString('en-US');
+    }
+  }
+
+  /* -------------------- DOM helpers -------------------- */
+  function $(sel){ return document.querySelector(sel); }
+  function $all(sel){ return Array.from(document.querySelectorAll(sel)); }
+  function showView(view){
+    $all('.view').forEach(v=>v.style.display='none');
+    const el = document.getElementById('view-' + view);
+    if(el) el.style.display = 'block';
+    // update title
+    $('#view-title').textContent = view.charAt(0).toUpperCase() + view.slice(1);
+    // set active nav
+    $all('.nav-btn').forEach(b=> b.setAttribute('aria-current','false'));
+    $all(`.nav-btn[data-view="${view}"]`).forEach(b=> b.setAttribute('aria-current','true'));
+    // render view specific
+    if(view === 'dashboard') renderAll();
+    if(view === 'history') renderHistory();
+    if(view === 'reports') { renderReportFilters(); generateReport(); }
+    if(view === 'settings') applySettingsToUI();
+  }
+
+  /* -------------------- Initialization & Event wiring -------------------- */
+  document.addEventListener('DOMContentLoaded', ()=>{
+
+    // Wire nav
+    $all('.nav-btn').forEach(btn=>{
+      btn.addEventListener('click', e=>{
+        const view = btn.getAttribute('data-view');
+        showView(view);
+        // close sidebar on mobile
+        $('#sidebar').classList.remove('open');
+      });
+    });
+
+    // Hamburger for mobile
+    $('#hamburger').addEventListener('click', ()=>{
+      const sb = $('#sidebar');
+      const open = sb.classList.toggle('open');
+      $('#hamburger').setAttribute('aria-expanded', open);
+    });
+    $('#toggle-sidebar').addEventListener('click', ()=> $('#sidebar').classList.toggle('open'));
+
+    // Clock
+    setInterval(()=> $('#clock').textContent = new Date().toLocaleString(), 1000);
+
+    // Quick form
+    $('#quick-form').addEventListener('submit', (e)=>{
+      e.preventDefault();
+      const type = $('#quick-type').value;
+      const amount = Number($('#quick-amount').value);
+      const member = $('#quick-member').value || state.members[0] || 'Umum';
+      const category = $('#quick-category').value || 'Umum';
+      if(!amount || amount <= 0){ alert('Jumlah harus > 0'); return; }
+      const tx = { id: uid(), member, type, amount, date: todayISO(), category, note:'', createdAt: new Date().toISOString() };
+      state.transactions.unshift(tx);
+      saveState(); renderAll();
+      $('#quick-form').reset();
+      if(state.settings.notify === 'on') alert('Transaksi berhasil ditambahkan');
+    });
+
+    // Quick export JSON
+    $('#btn-export-json').addEventListener('click', ()=> downloadBackupJSON());
+
+    // Exports
+    $('#export-xlsx').addEventListener('click', exportExcel);
+    $('#export-report-pdf').addEventListener('click', generateReportPDF);
+    $('#btn-print-report').addEventListener('click', ()=> window.print());
+
+    // Input form
+    $('#tx-form').addEventListener('submit', handleSaveTx);
+    $('#btn-reset-form').addEventListener('click', ()=> { $('#tx-form').reset(); if(state.settings.defaultDate==='today') $('#date').value = todayISO(); });
+
+    // History controls
+    $('#search').addEventListener('input', ()=> { pageNum = 1; renderHistory(); });
+    $('#filter-type').addEventListener('change', ()=> { pageNum = 1; renderHistory(); });
+    $('#filter-member').addEventListener('change', ()=> { pageNum = 1; renderHistory(); });
+    $('#btn-refresh').addEventListener('click', renderHistory);
+    $('#prev-page').addEventListener('click', ()=> { if(pageNum>1) pageNum--; renderHistory(); });
+    $('#next-page').addEventListener('click', ()=> { pageNum++; renderHistory(); });
+
+    // Report generation
+    $('#btn-generate-report').addEventListener('click', generateReport);
+    $('#btn-print-report-2').addEventListener('click', ()=> window.print());
+
+    // Settings
+    $('#btn-save-settings').addEventListener('click', saveSettings);
+    $('#btn-export-backup').addEventListener('click', downloadBackupJSON);
+    $('#restore-json').addEventListener('change', handleImportJSON);
+    $('#btn-reset-data').addEventListener('click', resetDataStep);
+
+    // Modal controls
+    $('#modal-close').addEventListener('click', closeModal);
+    $('#modal-backdrop').addEventListener('click', (e)=> { if(e.target.id==='modal-backdrop') closeModal(); });
+
+    // Print report button in quick panel
+    $('#btn-print-report').addEventListener('click', ()=> window.print());
+
+    // autosave before unload
+    window.addEventListener('beforeunload', (e)=>{
+      if(state.settings.autosave === 'on') saveState();
+    });
+
+    // init UI values
+    populateMemberSelects();
+    populateCategorySelects();
+    applySettingsToUI();
+    if(state.settings.defaultDate === 'today') $('#date').value = todayISO();
+
+    // sample data if empty (small)
+    if(state.transactions.length === 0){
+      // Add a couple sample transactions for first-run demo
+      state.transactions.unshift({ id: uid(), member: state.members[0] || 'Umum', type:'in', amount: 5000000, date: todayISO(), category: state.categories[0]||'Gaji', note:'Gaji bulan ini', createdAt: new Date().toISOString() });
+      state.transactions.unshift({ id: uid(), member: state.members[0] || 'Umum', type:'out', amount: 150000, date: todayISO(), category: 'Makan', note:'Makan siang', createdAt: new Date().toISOString() });
+      saveState();
+    }
+
+    // default view
+    showView('dashboard');
+  });
+
+  /* -------------------- Members / Categories -------------------- */
+  function populateMemberSelects(){
+    const selIds = ['#quick-member','#member','#filter-member','#report-member'];
+    selIds.forEach(id=>{
+      const el = $(id);
+      if(!el) return;
+      // for filter member keep an "all" option
+      if(id === '#filter-member' || id === '#report-member'){
+        el.innerHTML = '<option value="all">(Semua Anggota)</option>' + state.members.map(m => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join('');
+      } else {
+        el.innerHTML = state.members.map(m => `<option>${escapeHtml(m)}</option>`).join('');
+      }
+    });
+  }
+  function populateCategorySelects(){
+    const el1 = $('#category');
+    const el2 = $('#report-category');
+    if(el1) el1.innerHTML = state.categories.map(c => `<option>${escapeHtml(c)}</option>`).join('');
+    if(el2) el2.innerHTML = '<option value="">(Semua)</option>' + state.categories.map(c => `<option>${escapeHtml(c)}</option>`).join('');
+  }
+
+  /* -------------------- Transaction CRUD -------------------- */
+
+  // Save from main form (also used for edit)
+  function handleSaveTx(e){
+    e.preventDefault();
+    const isEdit = !!$('#tx-form').getAttribute('data-edit-id');
+    const editId = $('#tx-form').getAttribute('data-edit-id');
+    const payload = {
+      id: isEdit ? editId : uid(),
+      member: $('#member').value || state.members[0] || 'Umum',
+      type: $('#type').value,
+      amount: Number($('#amount').value),
+      date: $('#date').value,
+      category: $('#category').value,
+      note: $('#note').value || '',
+      createdAt: new Date().toISOString()
+    };
+    if(!payload.amount || payload.amount <= 0){ alert('Jumlah harus lebih dari 0'); return; }
+    if(!payload.date){ alert('Tanggal tidak valid'); return; }
+    if(isEdit){
+      const idx = state.transactions.findIndex(t => t.id === editId);
+      if(idx >= 0){
+        state.transactions[idx] = payload;
+        $('#tx-form').removeAttribute('data-edit-id');
+        $('#btn-save-tx').textContent = 'Simpan';
+      }
+    } else {
+      state.transactions.unshift(payload);
+    }
+    saveState();
+    renderAll();
+    $('#tx-form').reset();
+    if(state.settings.defaultDate === 'today') $('#date').value = todayISO();
+    if(state.settings.notify === 'on') alert('Transaksi disimpan');
+    showView('history');
+  }
+
+  function findTransaction(id){ return state.transactions.find(t => t.id === id); }
+  function openTxModal(tx){
+    if(!tx) return alert('Transaksi tidak ditemukan');
+    const content = document.getElementById('modal-content');
+    content.innerHTML = `
+      <h3>Detail Transaksi</h3>
+      <div style="display:grid;gap:6px">
+        <div><strong>Tanggal:</strong> ${tx.date}</div>
+        <div><strong>Nama:</strong> ${escapeHtml(tx.member)}</div>
+        <div><strong>Kategori:</strong> ${escapeHtml(tx.category)}</div>
+        <div><strong>Jumlah:</strong> ${formatCurrency(tx.amount)}</div>
+        <div><strong>Jenis:</strong> ${tx.type}</div>
+        <div><strong>Keterangan:</strong> ${escapeHtml(tx.note || '')}</div>
+      </div>
+    `;
+    $('#modal-action').style.display = 'inline-block';
+    $('#modal-action').textContent = 'Edit';
+    $('#modal-backdrop').style.display = 'flex';
+    $('#modal-backdrop').setAttribute('aria-hidden','false');
+
+    // attach actions
+    $('#modal-action').onclick = ()=>{
+      closeModal();
+      openEditTx(tx);
+    };
+    // add download nota button
+    const notaBtn = document.createElement('button');
+    notaBtn.className = 'btn secondary';
+    notaBtn.style.marginLeft = '8px';
+    notaBtn.textContent = 'Unduh Nota';
+    notaBtn.onclick = ()=> downloadNotaPDF(tx);
+    document.getElementById('modal').insertBefore(notaBtn, document.getElementById('modal').children[1]);
+    // delete
+    const delBtn = document.createElement('button');
+    delBtn.className = 'btn ghost';
+    delBtn.style.marginLeft = '8px';
+    delBtn.textContent = 'Hapus';
+    delBtn.onclick = ()=> { if(confirmTwoStep('Hapus transaksi ini?')){ deleteTransaction(tx.id); closeModal(); } };
+    document.getElementById('modal').insertBefore(delBtn, document.getElementById('modal').children[1]);
+  }
+
+  function closeModal(){
+    $('#modal-backdrop').style.display = 'none';
+    $('#modal-backdrop').setAttribute('aria-hidden','true');
+    // cleanup modal buttons (remove extra nodes)
+    const nod = document.getElementById('modal');
+    // remove any children that are non-core (we inserted nota/del buttons), keep modal-content and action buttons at end
+    // simplest: rebuild footer buttons
+    const footerButtons = nod.querySelectorAll('button');
+    footerButtons.forEach(btn=>{
+      if(btn.id !== 'modal-close' && btn.id !== 'modal-action') btn.remove();
+    });
+  }
+
+  function openEditTx(tx){
+    showView('input');
+    $('#member').value = tx.member;
+    $('#type').value = tx.type;
+    $('#amount').value = tx.amount;
+    $('#date').value = tx.date;
+    $('#category').value = tx.category;
+    $('#note').value = tx.note;
+    $('#btn-save-tx').textContent = 'Update';
+    $('#tx-form').setAttribute('data-edit-id', tx.id);
+    // change behavior of save handled in handleSaveTx by presence of data-edit-id
+  }
+
+  function deleteTransaction(id){
+    state.transactions = state.transactions.filter(t => t.id !== id);
+    saveState();
+    renderAll();
+  }
+
+  /* -------------------- History with Pagination -------------------- */
+  let pageNum = 1;
+  const perPage = 8;
+  function renderHistory(){
+    const tbody = $('#history-table');
+    tbody.innerHTML = '';
+    const q = ($('#search').value || '').toLowerCase();
+    const filterType = $('#filter-type').value;
+    const filterMember = $('#filter-member').value;
+    let list = state.transactions.slice(); // newest first already
+    list = list.filter(t=>{
+      if(filterType !== 'all' && t.type !== filterType) return false;
+      if(filterMember !== 'all' && filterMember && t.member !== filterMember) return false;
+      if(q && !(t.member.toLowerCase().includes(q) || t.category.toLowerCase().includes(q) || (t.note||'').toLowerCase().includes(q))) return false;
+      return true;
+    });
+    const totalPages = Math.max(1, Math.ceil(list.length / perPage));
+    if(pageNum > totalPages) pageNum = totalPages;
+    const start = (pageNum - 1) * perPage;
+    const pageItems = list.slice(start, start + perPage);
+    pageItems.forEach(t=>{
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${t.date}</td><td>${escapeHtml(t.member)}</td><td>${escapeHtml(t.category)}</td><td>${escapeHtml(t.note||'')}</td><td>${formatCurrency(t.amount)}</td><td>${t.type}</td>
+        <td>
+          <button class="action-btn" aria-label="Lihat detail" data-id="${t.id}" data-action="view">Lihat</button>
+          <button class="action-btn" aria-label="Edit transaksi" data-id="${t.id}" data-action="edit">Edit</button>
+          <button class="action-btn" aria-label="Hapus transaksi" data-id="${t.id}" data-action="del">Hapus</button>
+        </td>`;
+      tbody.appendChild(tr);
+    });
+
+    // attach handlers
+    tbody.querySelectorAll('button[data-action]').forEach(b=>{
+      const id = b.getAttribute('data-id');
+      const action = b.getAttribute('data-action');
+      b.addEventListener('click', ()=>{
+        const tx = findTransaction(id);
+        if(action === 'view') openTxModal(tx);
+        if(action === 'edit') openEditTx(tx);
+        if(action === 'del') { if(confirmTwoStep('Hapus transaksi ini?')) deleteTransaction(id); }
+      });
+    });
+
+    $('#page-num').textContent = pageNum;
+    // enable/disable prev next
+    // simple: disable prev on pageNum==1, next if at last page
+  }
+
+  /* -------------------- Exports: JSON backup/import -------------------- */
+  function downloadBackupJSON(){
+    const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `backup_transaksi_${todayISO()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+  function handleImportJSON(e){
+    const file = e.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev)=>{
+      try{
+        const parsed = JSON.parse(ev.target.result);
+        if(!parsed.transactions && !parsed.transactions) {
+          // support both v1 naming
+        }
+        // Basic validation
+        if(!parsed || !parsed.settings || !parsed.transactions) {
+          // if user exported earlier using this schema, restore accordingly
+          // But support both older defaults: if parsed.transactions doesn't exist try parsed.transactions
+        }
+        // For safety, ensure expected fields; fallback to merging
+        state = Object.assign({}, DEFAULT_STATE, parsed);
+        saveState();
+        populateMemberSelects();
+        populateCategorySelects();
+        renderAll();
+        alert('Restore selesai');
+      }catch(err){
+        console.error(err);
+        alert('File tidak valid');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  }
+
+  /* -------------------- Exports: Excel (SheetJS) -------------------- */
+  function exportExcel(){
+    // Build 2D array: headers + rows (use transactions filtered by current report filters)
+    const ws_data = [ ['Tanggal','Nama','Kategori','Keterangan','Jumlah','Jenis'] ];
+    state.transactions.slice().forEach(t=>{
+      ws_data.push([t.date, t.member, t.category, t.note || '', t.amount, t.type]);
+    });
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(ws_data);
+    XLSX.utils.book_append_sheet(wb, ws, 'Transaksi');
+    const fname = `transaksi_${todayISO()}.xlsx`;
+    XLSX.writeFile(wb, fname);
+  }
+
+  /* -------------------- Exports: PDF (report + nota) -------------------- */
+  async function generateReportPDF(){
+    await generateReport(); // ensure report-area updated
+    const el = document.getElementById('report-area');
+    await multiPagePDFFromElement(el, `laporan_${todayISO()}.pdf`);
+  }
+
+  // Convert an element into a multi-page PDF (simple slicing approach)
+  async function multiPagePDFFromElement(element, filename){
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF('p','pt','a4');
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    // Render element to canvas at high scale
+    const canvas = await html2canvas(element, { scale:2 });
+    const imgData = canvas.toDataURL('image/png');
+    const imgProps = pdf.getImageProperties(imgData);
+    const imgHeight = imgProps.height * (pageWidth / imgProps.width);
+    // If imgHeight <= pageHeight -> single page
+    if(imgHeight <= pageHeight){
+      pdf.addImage(imgData,'PNG',0,0,pageWidth,imgHeight);
+    } else {
+      // multiple pages: draw in vertical slices from canvas
+      // create temporary canvas for slicing
+      const sliceCanvas = document.createElement('canvas');
+      const sliceCtx = sliceCanvas.getContext('2d');
+      const scale = pageWidth / canvas.width;
+      const sliceHeightPx = Math.floor(pageHeight / scale);
+      sliceCanvas.width = canvas.width;
+      sliceCanvas.height = sliceHeightPx;
+      let y = 0;
+      while(y < canvas.height){
+        sliceCtx.clearRect(0,0,sliceCanvas.width,sliceCanvas.height);
+        sliceCtx.drawImage(canvas, 0, y, canvas.width, sliceHeightPx, 0, 0, canvas.width, sliceHeightPx);
+        const sliceData = sliceCanvas.toDataURL('image/png');
+        const sliceImgProps = pdf.getImageProperties(sliceData);
+        const sliceImgH = sliceImgProps.height * (pageWidth / sliceImgProps.width);
+        pdf.addImage(sliceData, 'PNG', 0, 0, pageWidth, sliceImgH);
+        y += sliceHeightPx;
+        if(y < canvas.height) pdf.addPage();
+      }
+    }
+    pdf.save(filename);
+  }
+
+  // Nota A6 (thermal style)
+  async function downloadNotaPDF(tx){
+    // build tiny element
+    const el = document.createElement('div');
+    el.style.padding = '8px';
+    el.style.width = '360px';
+    el.style.background = 'white';
+    el.style.fontFamily = 'Arial, sans-serif';
+    el.innerHTML = `
+      <div style="text-align:center;font-weight:700;margin-bottom:8px">NOTA</div>
+      <div>Tanggal: ${tx.date}</div>
+      <div>Nama: ${escapeHtml(tx.member)}</div>
+      <div>Kategori: ${escapeHtml(tx.category)}</div>
+      <div>Jumlah: ${formatCurrency(tx.amount)}</div>
+      <div>Jenis: ${tx.type}</div>
+      <div>Keterangan: ${escapeHtml(tx.note||'')}</div>
+    `;
+    document.body.appendChild(el);
+    const canvas = await html2canvas(el, { scale: 2 });
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ format: [105,148] }); // A6
+    const imgData = canvas.toDataURL('image/png');
+    pdf.addImage(imgData,'PNG',0,0,105,148);
+    pdf.save(`nota_${tx.id}.pdf`);
+    document.body.removeChild(el);
+  }
+
+  /* -------------------- Report & filter generation -------------------- */
+  function renderReportFilters(){
+    // ensure report-category and report-member populated
+    populateCategorySelects();
+    populateMemberSelects();
+  }
+  function generateReport(){
+    const from = $('#report-from').value;
+    const to = $('#report-to').value;
+    const cat = $('#report-category').value;
+    const member = $('#report-member').value;
+    let list = state.transactions.slice().reverse(); // oldest->newest if needed
+    if(from) list = list.filter(t => t.date >= from);
+    if(to) list = list.filter(t => t.date <= to);
+    if(cat) list = list.filter(t => t.category === cat);
+    if(member) list = list.filter(t => t.member === member);
+    // fill table
+    const tbody = $('#report-table tbody');
+    tbody.innerHTML = '';
+    let totalIn = 0, totalOut = 0;
+    list.forEach(t=>{
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${t.date}</td><td>${escapeHtml(t.member)}</td><td>${escapeHtml(t.category)}</td><td>${escapeHtml(t.note||'')}</td><td>${formatCurrency(t.amount)}</td><td>${t.type}</td>`;
+      tbody.appendChild(tr);
+      if(t.type === 'in') totalIn += Number(t.amount);
+      else totalOut += Number(t.amount);
+    });
+    $('#report-summary').innerHTML = `<div><strong>Total Masukan:</strong> ${formatCurrency(totalIn)}</div><div><strong>Total Pengeluaran:</strong> ${formatCurrency(totalOut)}</div><div><strong>Saldo:</strong> ${formatCurrency(totalIn - totalOut)}</div>`;
+  }
+
+  /* -------------------- Chart rendering -------------------- */
+  let chartInstance = null;
+  function renderChart(){
+    const ctx = document.getElementById('chart-monthly');
+    if(!ctx) return;
+    // prepare last 12 months
+    const months = {};
+    for(let i = 11; i >= 0; i--){
+      const d = new Date();
+      d.setMonth(d.getMonth() - i);
+      const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2,'0');
+      months[key] = { label: d.toLocaleString(undefined, { month: 'short', year: 'numeric' }), in:0, out:0 };
+    }
+    state.transactions.forEach(t=>{
+      const key = t.date.slice(0,7);
+      if(months[key]){
+        if(t.type === 'in') months[key].in += Number(t.amount);
+        else months[key].out += Number(t.amount);
+      }
+    });
+    const labels = Object.keys(months).map(k => months[k].label);
+    const inData = Object.keys(months).map(k => months[k].in);
+    const outData = Object.keys(months).map(k => months[k].out);
+    const data = {
+      labels,
+      datasets: [
+        { label: 'Masukan', data: inData, tension: 0.3, borderColor: '#16a34a', backgroundColor:'rgba(16,163,127,0.08)' },
+        { label: 'Pengeluaran', data: outData, tension:0.3, borderColor:'#ef4444', backgroundColor:'rgba(239,68,68,0.08)' }
+      ]
+    };
+    if(chartInstance) chartInstance.destroy();
+    chartInstance = new Chart(ctx, { type:'line', data, options:{ responsive:true, plugins:{legend:{position:'top'}} } });
+  }
+
+  /* -------------------- Renderers -------------------- */
+  function renderSummary(){
+    const totalIn = state.transactions.filter(t => t.type === 'in').reduce((s,t)=>s + Number(t.amount), 0);
+    const totalOut = state.transactions.filter(t => t.type === 'out').reduce((s,t)=>s + Number(t.amount), 0);
+    const balance = totalIn - totalOut;
+    $('#total-in').textContent = formatCurrency(totalIn);
+    $('#total-out').textContent = formatCurrency(totalOut);
+    $('#total-balance').textContent = formatCurrency(balance);
+    $('#total-count').textContent = state.transactions.length;
+  }
+
+  function renderRecent(){
+    const tbody = $('#recent-list');
+    tbody.innerHTML = '';
+    state.transactions.slice(0,6).forEach(t=>{
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${t.date}</td><td>${escapeHtml(t.member)}</td><td>${escapeHtml(t.category)}</td><td>${formatCurrency(t.amount)}</td><td>${t.type}</td><td><button class="action-btn" data-id="${t.id}" data-action="view">Lihat</button></td>`;
+      tbody.appendChild(tr);
+    });
+    tbody.querySelectorAll('button[data-action]').forEach(b=>{
+      b.addEventListener('click', ()=> openTxModal(findTransaction(b.getAttribute('data-id'))));
+    });
+  }
+
+  function renderAll(){
+    populateMemberSelects();
+    populateCategorySelects();
+    renderSummary();
+    renderRecent();
+    renderChart();
+  }
+
+  /* -------------------- Settings -------------------- */
+  function applySettingsToUI(){
+    $('#currency').value = state.settings.currency;
+    $('#numformat').value = state.settings.numformat;
+    $('#theme').value = state.settings.theme;
+    $('#default-date').value = state.settings.defaultDate;
+    $('#notify').value = state.settings.notify;
+    $('#autosave').value = state.settings.autosave;
+    document.getElementById('app').setAttribute('data-theme', state.settings.theme || 'light');
+    if(state.settings.defaultDate === 'today') $('#date').value = todayISO();
+    // quick-member fallback
+    if(!state.members || state.members.length === 0) state.members = ['Umum'];
+    if(!state.categories || state.categories.length === 0) state.categories = ['Umum'];
+    populateMemberSelects();
+    populateCategorySelects();
+  }
+
+  function saveSettings(){
+    state.settings.currency = $('#currency').value;
+    state.settings.numformat = $('#numformat').value;
+    state.settings.theme = $('#theme').value;
+    state.settings.defaultDate = $('#default-date').value;
+    state.settings.notify = $('#notify').value;
+    state.settings.autosave = $('#autosave').value;
+    saveState();
+    applySettingsToUI();
+    renderAll();
+    alert('Pengaturan disimpan');
+  }
+
+  /* -------------------- Reset data (two-step) -------------------- */
+  function resetDataStep(){
+    if(!confirm('Reset data akan menghapus seluruh transaksi. Tekan OK untuk lanjut.')) return;
+    const key = prompt('Ketik "CONFIRM" untuk menghapus seluruh data');
+    if(key !== 'CONFIRM'){ alert('Reset dibatalkan'); return; }
+    state = deepCopy(DEFAULT_STATE);
+    saveState();
+    populateMemberSelects();
+    populateCategorySelects();
+    renderAll();
+    alert('Data berhasil direset');
+  }
+
+  /* -------------------- Helpers -------------------- */
+  function escapeHtml(s){ if(s === undefined || s === null) return ''; return s.toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function confirmTwoStep(msg){
+    if(!confirm(msg)) return false;
+    return confirm('Konfirmasi terakhir — aksi ini permanen. Lanjutkan?');
+  }
+
+  /* -------------------- Small utilities for UI wiring -------------------- */
+  function renderMemberOptions(){
+    const memberEls = [ '#quick-member', '#member', '#filter-member', '#report-member' ];
+    memberEls.forEach(id=>{
+      const el = $(id);
+      if(!el) return;
+      if(id === '#filter-member' || id === '#report-member'){
+        el.innerHTML = '<option value="all">(Semua Anggota)</option>' + state.members.map(m=>`<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join('');
+      } else {
+        el.innerHTML = state.members.map(m=>`<option>${escapeHtml(m)}</option>`).join('');
+      }
+    });
+  }
+  // keep populateMemberSelects for compatibility
+  function populateMemberSelects(){ renderMemberOptions(); }
+  function populateCategorySelects(){ const catEls = ['#quick-category','#category','#report-category']; catEls.forEach(id=>{ const el=$(id); if(!el) return; el.innerHTML = (id === '#report-category' ? '<option value=\"\">(Semua)</option>' : '') + state.categories.map(c=>`<option>${escapeHtml(c)}</option>`).join(''); }); }
+
+  /* -------------------- Public functions used by UI (add member/category) -------------------- */
+  // Add member (exposed via settings UI: user can use browser console or later extend UI)
+  // For now: we allow adding by prompt dialog
+  window.addMember = function(){
+    const name = prompt('Nama anggota baru:');
+    if(!name) return alert('Dibatalkan');
+    state.members.push(name);
+    saveState();
+    populateMemberSelects();
+    alert('Anggota ditambahkan');
+  };
+  window.addCategory = function(){
+    const name = prompt('Nama kategori baru:');
+    if(!name) return alert('Dibatalkan');
+    state.categories.push(name);
+    saveState();
+    populateCategorySelects();
+    alert('Kategori ditambahkan');
+  };
+
+  /* -------------------- Small UI bindings for member/category via prompts (immediate) -------------------- */
+  // Add small buttons in settings - create them dynamically for non-intrusive UI
+  (function addSettingsQuickButtons(){
+    // create quick Add Member & Add Category buttons under settings panel
+    document.addEventListener('DOMContentLoaded', ()=>{
+      const settingsPanel = Array.from(document.querySelectorAll('.view')).find(v => v.id === 'view-settings');
+      if(!settingsPanel) return;
+      const wrapper = document.createElement('div');
+      wrapper.style.marginTop = '12px';
+      wrapper.innerHTML = `<button class="btn" id="ui-add-member">Tambah Anggota</button>
+                           <button class="btn secondary" id="ui-add-category">Tambah Kategori</button>`;
+      settingsPanel.querySelector('.panel').appendChild(wrapper);
+      $('#ui-add-member').addEventListener('click', ()=> {
+        const n = prompt('Nama anggota baru:');
+        if(n){ state.members.push(n); saveState(); populateMemberSelects(); alert('Anggota ditambahkan'); }
+      });
+      $('#ui-add-category').addEventListener('click', ()=> {
+        const n = prompt('Nama kategori baru:');
+        if(n){ state.categories.push(n); saveState(); populateCategorySelects(); alert('Kategori ditambahkan'); }
+      });
+    });
+  })();
+
+  /* -------------------- Render initial content -------------------- */
+  function renderAll(){
+    populateMemberSelects();
+    populateCategorySelects();
+    renderSummary();
+    renderRecent();
+    renderChart();
+  }
+
+  // History page render wrapper with bounds check
+  function ensurePageBounds(){
+    const total = Math.max(1, Math.ceil(state.transactions.length / perPage));
+    if(pageNum < 1) pageNum = 1;
+    if(pageNum > total) pageNum = total;
+  }
+
+  /* Expose some functions to buttons */
+  window.renderHistory = renderHistory;
+  window.renderAll = renderAll;
+  window.renderChart = renderChart;
+  window.exportExcel = exportExcel;
+  window.generateReportPDF = generateReportPDF;
+  window.downloadBackupJSON = downloadBackupJSON;
+  window.handleImportJSON = handleImportJSON;
+  window.resetDataStep = resetDataStep;
+  window.openEditTx = openEditTx;
+  window.openTxModal = openTxModal;
+  window.downloadNotaPDF = downloadNotaPDF;
+  window.addMember = window.addMember;
+  window.addCategory = window.addCategory;
+
+  // initial rendering after script loaded
+  (function initAfterLoad(){
+    // small delay to ensure DOM ready
+    setTimeout(()=>{ renderAll(); }, 120);
+  })();
+
+  </script>
+</body>
+</html>
