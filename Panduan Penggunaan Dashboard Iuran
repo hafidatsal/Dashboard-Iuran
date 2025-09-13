@@ -1,0 +1,154 @@
+📘 Panduan Penggunaan Dashboard Iuran (Single File HTML)
+
+1. Persiapan
+
+Cukup simpan file dashboard-iuran.html (atau dashboard-tabungan.html dari versi sebelumnya).
+
+Buka dengan browser modern: Chrome, Edge, atau Firefox.
+
+Tidak perlu server, langsung double click file → terbuka otomatis di browser.
+
+
+
+---
+
+2. Navigasi (Sidebar Menu)
+
+Dashboard → menampilkan ringkasan (total iuran terkumpul, total pengeluaran, saldo, jumlah transaksi).
+
+Input Transaksi → form untuk mencatat iuran (pemasukan/pengeluaran).
+
+Riwayat Transaksi → tabel semua transaksi yang sudah diinput, bisa edit/hapus.
+
+Laporan & Export → buat laporan dalam bentuk tabel + grafik, bisa diexport ke Excel (XLSX) atau PDF.
+
+Pengaturan → atur mata uang, format angka, tema (light/dark), opsi tanggal default, reset data, backup/restore JSON.
+
+
+
+---
+
+3. Input Transaksi
+
+Isi form transaksi:
+
+Jenis: Masukan / Pengeluaran (dropdown).
+
+Jumlah: angka (> 0).
+
+Tanggal: default hari ini, bisa diubah.
+
+Kategori: pilih dari dropdown (misal: iuran bulanan, operasional, dll.).
+
+Keterangan: teks bebas.
+
+
+Klik Simpan → transaksi langsung tersimpan ke localStorage.
+
+Jika setting notifikasi aktif, akan muncul popup konfirmasi.
+
+
+
+---
+
+4. Riwayat Transaksi
+
+Semua transaksi tampil dalam tabel.
+
+Fitur:
+
+Edit → buka modal, ubah data, simpan.
+
+Hapus → konfirmasi dulu sebelum data dihapus.
+
+Lihat Detail → buka modal detail + bisa export nota PDF kecil (A6/thermal style).
+
+
+Jika transaksi banyak → tombol Next / Prev untuk navigasi (pagination sederhana).
+
+
+
+---
+
+5. Laporan & Export
+
+Tampilkan ringkasan transaksi dalam periode tertentu.
+
+Bisa filter berdasarkan tanggal (from / to) atau kategori.
+
+Grafik (Chart.js) otomatis membandingkan masukan vs pengeluaran per bulan.
+
+Export:
+
+Excel (XLSX) → klik tombol Export Excel → file akan terunduh dengan nama transaksi_YYYY-MM-DD.xlsx.
+
+PDF (jsPDF + html2canvas) → klik tombol Export PDF → file laporan rapi terunduh.
+
+Cetak (Print) → klik tombol Cetak → memanggil window.print() → bisa cetak ke printer.
+
+
+
+
+---
+
+6. Pengaturan
+
+Mata uang → IDR / USD, memengaruhi simbol pada angka.
+
+Format angka → 1.000.000 atau 1,000,000.
+
+Tema → Light / Dark (disimpan di localStorage, otomatis terapkan saat reload).
+
+Tanggal default → Hari ini / Custom.
+
+Notifikasi → nyalakan/matikan popup konfirmasi.
+
+Autosave → simpan otomatis sebelum keluar (opsional).
+
+Backup & Restore:
+
+Backup → download JSON berisi semua data.
+
+Restore → upload JSON untuk memulihkan data lama.
+
+
+Reset Data → hapus semua data (butuh konfirmasi dua kali).
+
+
+
+---
+
+7. Penyimpanan Data
+
+Semua data tersimpan di localStorage browser (tidak di server).
+
+Jika ganti perangkat / clear cache → data hilang kecuali sudah backup JSON.
+
+
+
+---
+
+8. Dependensi (CDN sudah ada di file HTML)
+
+Chart.js → untuk grafik laporan.
+
+SheetJS (XLSX) → untuk export Excel.
+
+jsPDF + html2canvas → untuk export PDF & nota.
+
+
+
+---
+
+⚡ Jadi:
+
+1. Download file → buka di browser.
+
+
+2. Tambah transaksi → cek dashboard & riwayat.
+
+
+3. Export laporan ke Excel/PDF sesuai kebutuhan.
+
+
+4. Atur pengaturan sesuai preferensi (tema, mata uang, dsb.).
